@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat em Tempo Real</title>
+
+  <link rel="stylesheet" type="text/css" href="/css/estilo.css">
+  <style>
+    /* Adicionando alguns estilos inline para garantir que funcionem */
+    .message-container {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .message-time {
+      font-size: 0.8em;
+      color: #888;
+      margin-left: 8px;
+    }
+
+    .message-status {
+      font-size: 0.7em;
+      color: #666;
+      margin-top: 2px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="messages" id="output"></div>
+
+    <div class="input-container">
+      <input type="text" id="messageInput" placeholder="Digite sua mensagem" required>
+      <button type="submit" id="sendBtn">Enviar</button>
+    </div>
+  </div>
+
+  <script>
+    const backendUrl = 'http://127.0.0.1:5000';
+    let lastMessageId = 0; // Controle da última mensagem recebida
+    let messageCache = new Set(); // Cache para evitar duplicatas
+
+    // Função para formatar a hora atual
+    function getCurrentTime() {
+      const now = new Date();
+      return now.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // Função para criar elemento de mensagem
+    function createMessageElement(content, type, timestamp) {
+      const messageId = `${content}-${timestamp}`; // Identificador único para a mensagem
+
+      // Verifica se a mensagem já existe no cache
+      if (messageCache.has(messageId)) {
+        return null;
+      }
+
+      // Adiciona ao cache
+      messageCache.add(messageId);
+
+      const messageContainer = document.createElement('div');
+      messageContainer.classList.add('message', type);
+
+      const messageContent = document.createElement('div');
+      messageContent.classList.add('message-content');
+      messageContent.textContent = content;
+
+      const messageTime = document.createElement('span');
+      messageTime.classList.add('message-time');
+      messageTime.textContent = timestamp || getCurrentTime();
+
+      messageContainer.appendChild(messageContent);
+      messageContainer.appendChild(messageTime);
+
+      return messageContainer;
+    }
+
+    // Função para adicionar mensagem ao chat
+    function adicionarMensagem(conteudo, tipo, timestamp) {
+      const messageElement = createMessageElement(conteudo, tipo, timestamp);
+
+      if (messageElement) {
+        const messagesContainer = document.getElementById('output');
+        messagesContainer.appendChild(messageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+    }
+
+    // Função para enviar mensagem
+    async function enviarMensagem(event) {
+      event.preventDefault();
+      const messageInput = document.getElementById('messageInput');
+      const mensagem = messageInput.value.trim();
+
+      if (!mensagem) return; // Não envia mensagens vazias
+
+      try {
+        const response = await fetch(`${backendUrl}/mensagem`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conteudo: mensagem,
+            timestamp: new Date().toISOString()
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Erro: ${response.status}`);
+        }
+
+        // Limpa o campo de entrada apenas se a mensagem foi enviada com sucesso
+        messageInput.value = '';
+
+        // Adiciona a mensagem localmente
+        adicionarMensagem(mensagem, 'sent');
+
+      } catch (error) {
+        console.error('Erro ao enviar mensagem:', error);
+        alert('Erro ao enviar mensagem. Tente novamente.');
+      }
+    }
+
+    // Função para carregar mensagens
+    async function visualizarMensagens() {
+      try {
+        const response = await fetch(`${backendUrl}/mensagens`);
+        if (!response.ok) {
+          throw new Error(`Erro: ${response.status}`);
+        }
+
+        const mensagens = await response.json();
+
+        // Verifica se há novas mensagens
+        const novasMensagens = mensagens.filter(msg => {
+          const msgId = `${msg.conteudo}-${msg.timestamp || ''}`;
+          return !messageCache.has(msgId);
+        });
+
+        // Adiciona apenas as novas mensagens
+        novasMensagens.forEach(msg => {
+          adicionarMensagem(msg.conteudo, 'received', msg.timestamp);
+        });
+
+      } catch (error) {
+        console.error('Erro ao carregar mensagens:', error);
+      }
+    }
+
+    // Função para testar conexão inicial
+    async function testarConexao() {
+      try {
+        const response = await fetch(`${backendUrl}/mensagens`);
+        if (!response.ok) {
+          throw new Error(`Erro: ${response.status}`);
+        }
+        console.log('Conexão com o backend estabelecida com sucesso!');
+      } catch (error) {
+        console.error('Erro de conexão com o servidor:', error);
+        alert('Não foi possível se conectar ao servidor.');
+      }
+    }
+
+    // Event Listeners
+    document.getElementById('sendBtn').addEventListener('click', enviarMensagem);
+
+    // Adiciona evento de Enter no input
+    document.getElementById('messageInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        enviarMensagem(e);
+      }
+    });
+
+    // Inicialização
+    testarConexao();
+
+    // Atualização periódica das mensagens
+    const updateInterval = 1000; // 3 segundos
+    setInterval(visualizarMensagens, updateInterval);
+  </script>
+</body>
+</html>
